@@ -896,7 +896,10 @@
     }
 
     ta.value = kifText;
-    loadBtn.click(); // 既存の読み込み処理をそのまま使う
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.dispatchEvent(new Event("change", { bubbles: true }));
+    loadBtn.click();
+
 
   } catch (e) {
     console.error(e);
