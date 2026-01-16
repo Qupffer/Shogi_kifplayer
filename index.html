@@ -2,332 +2,286 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>KIF Viewer (branch)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KIF Viewer (branch + simple)</title>
   <style>
     :root{
-      --sq: clamp(28px, 8.2vw, 44px);
-      --board-bg: #f2b10a;       /* 盤っぽい黄 */
-      --line: #111;             /* 罫線 */
-      --panel: #ffffff;
-      --muted: #666;
-      --accent: #1a73e8;
+      --sq: 44px;
+      --pad: 14px;
+      --gap: 14px;
+
+      /* board look */
+      --wood: #e3b354;
+      --wood2:#e8bf63;
+      --grid: #111;
+      --gridThin: 2px;
+      --gridThick: 3px;
+
+      --pieceFont: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Times New Roman", serif;
+      --uiFont: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
     }
-    html, body { height: 100%; }
+
+    html, body { height:100%; }
     body{
-      margin: 0;
-      font-family: -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Segoe UI",sans-serif;
-      background: #fff;
-      overflow: hidden; /* iframe内で内部スクロールに寄せる */
+      font-family: var(--uiFont);
+      margin:0;
+      padding:var(--pad);
+      box-sizing:border-box;
+      background:#fff;
+      color:#111;
     }
+    *,*::before,*::after{ box-sizing:inherit; }
 
-    header{
-      padding: 12px 14px;
-      border-bottom: 1px solid #e5e5e5;
-      display:flex; gap:10px; align-items: baseline; flex-wrap: wrap;
+    h1{
+      font-size:18px;
+      margin:0 0 10px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
     }
-    header h1{ font-size: 16px; margin: 0; }
-    header .small{ font-size: 12px; color: var(--muted); }
+    .topbtns{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .linkbtn{
+      display:inline-block;
+      padding:7px 10px;
+      border-radius:8px;
+      border:1px solid #bbb;
+      background:#fff;
+      color:#111;
+      text-decoration:none;
+      font-size:13px;
+    }
+    .linkbtn:active{ transform: translateY(1px); }
 
-    .app{
-      height: calc(100% - 49px);
-      display: grid;
-      grid-template-columns: 1fr;
-      overflow: hidden;
-    }
-
-    /* 3カラム(広い時) / 1カラム(狭い時) */
-    .row{
-      height: 100%;
-      display: grid;
-      grid-template-columns: 360px 1fr 360px;
-      gap: 12px;
-      padding: 12px;
-      overflow: hidden;
-      box-sizing: border-box;
-    }
-    @media (max-width: 980px){
-      .row{ grid-template-columns: 1fr; }
-    }
-
+    .row{ display:flex; gap:var(--gap); flex-wrap:wrap; align-items:flex-start; }
     .panel{
-      background: var(--panel);
-      border: 1px solid #ddd;
-      border-radius: 12px;
-      padding: 12px;
-      overflow: auto;
-      -webkit-overflow-scrolling: touch;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:12px;
+      background:#fff;
     }
-    .controls{
-      display:flex; gap:8px; flex-wrap: wrap; align-items: center;
-    }
+
+    .controls{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button{
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #bbb;
-      background: #fff;
-      cursor: pointer;
-      font-size: 14px;
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid #bbb;
+      background:#fff;
+      cursor:pointer;
     }
     button:active{ transform: translateY(1px); }
-    input[type="range"]{ width: min(520px, 92vw); }
+    button.smallbtn{ padding:6px 8px; font-size:12px; }
+
+    input[type="range"]{ width:min(520px, 90vw); }
     textarea{
-      width: 100%;
-      height: 140px;
-      font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size: 12px;
-      box-sizing: border-box;
+      width:min(520px, 90vw);
+      height:140px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
     }
-    .meta{ font-size: 12px; color:#333; white-space: pre-wrap; margin-top: 8px; }
-    .small{ font-size: 12px; color: var(--muted); }
+    .meta{ font-size:12px; color:#444; white-space:pre-wrap; margin-top:8px; }
+    .small{ font-size:12px; color:#666; }
 
-    /* --- Board area --- */
-    .boardArea{
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-      overflow: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px solid #ddd;
-      background: #fff;
+    /* Branch UI */
+    .branchbar{
+      display:none;
+      margin-top:8px;
+      padding-top:8px;
+      border-top:1px dashed #ddd;
     }
+    .branchbar .label{ font-weight:700; font-size:12px; margin-bottom:6px; }
+    .branchopts{ display:flex; gap:6px; flex-wrap:wrap; }
+    .branchbtn{
+      padding:6px 8px;
+      border-radius:999px;
+      border:1px solid #bbb;
+      background:#fff;
+      font-size:12px;
+      cursor:pointer;
+    }
+    .branchbtn.active{ background:#e8f0ff; border-color:#8ab0ff; }
 
-    .boardFrame{
-      display: grid;
-      grid-template-columns: 28px auto 36px;
-      grid-template-rows: 26px auto;
-      gap: 6px;
-      align-items: start;
-      justify-content: start;
-    }
+    /* Board UI */
+    .boardwrap{ display:flex; flex-direction:column; gap:10px; }
 
-    .topFiles{
-      grid-column: 2 / 3;
-      grid-row: 1 / 2;
-      display: grid;
-      grid-template-columns: repeat(9, var(--sq));
-      justify-content: start;
-      font-family: "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
-      font-size: 14px;
-      color: #111;
-      letter-spacing: 0.5px;
+    .hands{
+      display:grid;
+      gap:6px;
+      font-size:14px;
     }
-    .topFiles div{ text-align:center; }
-
-    .leftLabel{
-      grid-column: 1 / 2;
-      grid-row: 2 / 3;
-      writing-mode: vertical-rl;
-      text-orientation: upright;
-      font-family: "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
-      font-size: 18px;
-      color:#111;
-      padding-top: 2px;
-    }
-
-    .rightRanks{
-      grid-column: 3 / 4;
-      grid-row: 2 / 3;
-      display: grid;
-      grid-template-rows: repeat(9, var(--sq));
-      justify-content: start;
-      font-family: "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
-      font-size: 16px;
-      color:#111;
-    }
-    .rightRanks div{ display:flex; align-items:center; justify-content:center; }
-
-    table.board{
-      grid-column: 2 / 3;
-      grid-row: 2 / 3;
-      border-collapse: collapse;
-      user-select: none;
-      background: var(--board-bg);
-      border: 3px solid var(--line);
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
-    }
-    table.board td{
-      width: var(--sq);
-      height: var(--sq);
-      border: 2px solid var(--line);
-      text-align: center;
-      vertical-align: middle;
-      font-size: calc(var(--sq) * 0.55);
-      position: relative;
-      font-family: "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
-      color: #111;
-    }
-    table.board td .gote{ display:inline-block; transform: rotate(180deg); }
-
-    /* 持ち駒・手番（右側の黒帯っぽい） */
-    .sideBar{
-      display:flex;
-      gap: 10px;
-      align-items: stretch;
-      justify-content: space-between;
-      flex-wrap: wrap;
-    }
-    .turnBadge{
-      background:#111;
-      color:#fff;
-      border-radius: 10px;
-      padding: 10px 12px;
-      display:flex;
-      gap: 10px;
-      align-items:center;
-      min-width: 170px;
-    }
-    .turnBadge .mark{
-      width: 28px; height: 28px;
-      border-radius: 8px;
-      display:flex; align-items:center; justify-content:center;
-      background:#000;
-      border: 1px solid rgba(255,255,255,0.35);
-      font-size: 18px;
-      line-height: 1;
-    }
-    .turnBadge .txt{
-      display:flex; flex-direction: column;
-      gap: 2px;
-      font-family: "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
-    }
-    .turnBadge .txt .who{ font-size: 14px; }
-    .turnBadge .txt .hold{ font-size: 13px; opacity: 0.95; }
-
-    .navRow{
-      display:flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items:center;
-    }
-
-    /* 分岐選択UI */
-    .branchBox{
-      border: 1px solid #ddd;
-      border-radius: 12px;
-      padding: 10px;
+    .handline{ display:flex; gap:8px; flex-wrap:wrap; align-items:baseline; }
+    .handtitle{ font-weight:700; min-width:3.2em; }
+    .handpiece{
+      padding:2px 6px;
+      border:1px solid #ddd;
+      border-radius:999px;
       background:#fafafa;
     }
-    .branchTitle{ font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-    .branchList{ display:flex; flex-direction: column; gap: 6px; }
-    .branchBtn{
-      text-align:left;
-      width:100%;
-      border: 1px solid #cfcfcf;
-      background:#fff;
-      border-radius: 10px;
-      padding: 8px 10px;
-      font-size: 13px;
-    }
-    .branchBtn.active{
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(26,115,232,0.18);
+
+    /* Board frame with coordinates */
+    .boardframe{
+      display:grid;
+      grid-template-columns: 28px calc(var(--sq) * 9) 28px;
+      grid-template-rows: 24px calc(var(--sq) * 9) 24px;
+      gap:0;
+      align-items:center;
+      justify-items:center;
     }
 
-    /* 手順リスト */
-    .movelist ol{ margin:0; padding-left: 22px; }
-    .movelist li{ padding: 4px 6px; border-radius: 8px; cursor:pointer; }
+    .coordTop, .coordBottom{
+      grid-column:2;
+      display:grid;
+      grid-template-columns: repeat(9, var(--sq));
+      width: calc(var(--sq) * 9);
+      font-size:12px;
+      color:#111;
+      font-family: var(--pieceFont);
+    }
+    .coordTop{ grid-row:1; }
+    .coordBottom{ grid-row:3; }
+
+    .coordLeft, .coordRight{
+      grid-row:2;
+      display:grid;
+      grid-template-rows: repeat(9, var(--sq));
+      height: calc(var(--sq) * 9);
+      font-size:12px;
+      color:#111;
+      font-family: var(--pieceFont);
+    }
+    .coordLeft{ grid-column:1; }
+    .coordRight{ grid-column:3; }
+
+    .board{
+      grid-column:2;
+      grid-row:2;
+      width: calc(var(--sq) * 9);
+      height: calc(var(--sq) * 9);
+      display:grid;
+      grid-template-columns: repeat(9, var(--sq));
+      grid-template-rows: repeat(9, var(--sq));
+      background: linear-gradient(0deg, var(--wood), var(--wood2));
+      border: var(--gridThick) solid var(--grid);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.08) inset;
+      user-select:none;
+    }
+
+    .cell{
+      width: var(--sq);
+      height: var(--sq);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      position:relative;
+      border-right: var(--gridThin) solid var(--grid);
+      border-bottom: var(--gridThin) solid var(--grid);
+      font-family: var(--pieceFont);
+      font-size: 22px;
+      line-height: 1;
+      color:#111;
+      text-shadow: 0 1px 0 rgba(255,255,255,.25);
+    }
+    /* remove last borders at edges */
+    .cell.edgeRight{ border-right: none; }
+    .cell.edgeBottom{ border-bottom: none; }
+
+    .piece.gote{ transform: rotate(180deg); display:inline-block; }
+    .movelist{
+      max-height: calc(var(--sq) * 9 + 90px);
+      overflow:auto;
+      width:min(520px, 90vw);
+    }
+    .movelist ol{ margin:0; padding-left:22px; }
+    .movelist li{ padding:3px 6px; border-radius:6px; cursor:pointer; }
     .movelist li:hover{ background:#f4f4f4; }
     .movelist li.active{ background:#e8f0ff; }
 
-    .footerNote{
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 8px;
-      line-height: 1.35;
+    /* Embed/short-height: compact */
+    .embedded :root{ --sq: 36px; --pad: 10px; --gap: 10px; }
+    .embedded textarea{ height:110px; }
+    .embedded .movelist{ display:none; }
+    .embedded .panel{ padding:10px; }
+
+    @media (max-height: 720px){
+      :root{ --sq: 36px; --pad: 10px; --gap: 10px; }
+      textarea{ height:110px; }
+      .movelist{ display:none; }
     }
-    a.link{ color: var(--accent); text-decoration: none; }
-    a.link:hover{ text-decoration: underline; }
+    @media (max-width: 560px){
+      :root{ --sq: 36px; --pad: 10px; --gap: 10px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>棋譜再生（KIF / 分岐対応）</h1>
-    <div class="small">Notion埋め込みで小さい場合は、埋め込み内スクロール or 右上の「開く」で全画面表示。</div>
-  </header>
+  <h1>
+    簡易 棋譜再生（KIF）
+    <span class="topbtns">
+      <a id="btnPop" class="linkbtn" href="#" target="_blank" rel="noopener">全画面で開く</a>
+    </span>
+  </h1>
 
-  <div class="app">
-    <div class="row">
-
-      <!-- Left: loader -->
-      <div class="panel">
-        <div class="controls">
-          <input id="file" type="file" accept=".kif,.kifu,.txt" />
-          <button id="btnSample" title="同じ場所に piyo_prev_game.kif を置いた場合">サンプル</button>
-        </div>
-
-        <div style="margin-top:10px">
-          <div class="small">ファイルが面倒なら、ここにKIFを貼って「貼付読込」でもOK。</div>
-          <textarea id="kifText" placeholder="ここにKIFを貼り付け"></textarea>
-          <div class="controls" style="margin-top:8px">
-            <button id="btnLoadText">貼付読込</button>
-            <button id="btnReset">初期局面</button>
-          </div>
-        </div>
-
-        <div class="meta" id="meta"></div>
-
-        <div class="footerNote">
-          ・分岐の多い棋譜は、本譜だけ読み込み、必要な変化だけ選択して辿ります。<br>
-          ・GitHub Pages で公開して Notion にURLを埋め込むのが安定です。
+  <div class="row">
+    <div class="panel" style="min-width:min(560px, 92vw);">
+      <div class="controls">
+        <input id="file" type="file" accept=".kif,.kifu,.txt" />
+        <button id="btnSample" title="同じリポジトリに piyo_prev_game.kif を置いた場合">サンプル読込</button>
+      </div>
+      <div style="margin-top:10px">
+        <div class="small">ファイルが面倒なら、ここにKIFを貼って「貼付読込」でもOK。</div>
+        <textarea id="kifText" placeholder="ここにKIFを貼り付け"></textarea>
+        <div class="controls" style="margin-top:8px">
+          <button id="btnLoadText">貼付読込</button>
+          <button id="btnReset">初期局面</button>
         </div>
       </div>
+      <div class="meta" id="meta"></div>
 
-      <!-- Middle: board -->
-      <div class="boardArea" id="boardArea">
-        <div class="sideBar">
-          <div class="turnBadge" id="turnBadge">
-            <div class="mark" id="turnMark">☗</div>
-            <div class="txt">
-              <div class="who" id="turnWho">先手番</div>
-              <div class="hold" id="turnHold">（先手：なし）</div>
-            </div>
-          </div>
+      <div class="branchbar" id="branchbar">
+        <div class="label">分岐（この手数から）</div>
+        <div class="branchopts" id="branchopts"></div>
+        <div class="small" style="margin-top:6px">※「変化：n手」形式のみ対応。曖昧手（元座標なしで複数候補）は安全のため止めずに推測します。</div>
+      </div>
+    </div>
 
-          <div class="navRow">
-            <button id="btnFirst">|&lt;</button>
-            <button id="btnPrev">&lt;</button>
-            <button id="btnNext">&gt;</button>
-            <button id="btnLast">&gt;|</button>
-          </div>
-        </div>
+    <div class="panel boardwrap">
+      <div class="hands" id="hands"></div>
 
-        <div class="navRow">
-          <input id="slider" type="range" min="0" max="0" value="0" />
-          <span id="plyLabel" class="small">0手目</span>
-        </div>
-        <div class="small" id="moveLabel">初期局面</div>
+      <div class="boardframe">
+        <div class="coordTop" id="coordTop"></div>
+        <div class="coordLeft" id="coordLeft"></div>
 
-        <div id="branchUI" class="branchBox" style="display:none">
-          <div class="branchTitle">この局面の変化</div>
-          <div class="branchList" id="branchList"></div>
-          <div class="small" style="margin-top:6px" id="branchHint"></div>
-        </div>
+        <div class="board" id="board"></div>
 
-        <div class="boardFrame">
-          <div class="topFiles" id="topFiles"></div>
-          <div class="leftLabel">将棋</div>
-          <table class="board" id="board"></table>
-          <div class="rightRanks" id="rightRanks"></div>
-        </div>
+        <div class="coordRight" id="coordRight"></div>
+        <div class="coordBottom" id="coordBottom"></div>
       </div>
 
-      <!-- Right: movelist -->
-      <div class="panel movelist">
-        <div class="controls" style="justify-content:space-between; gap:10px;">
-          <div class="small">手順（タップで移動）</div>
-          <button id="btnBackMain" style="display:none">本譜に戻る</button>
-        </div>
-        <ol id="moves"></ol>
+      <div class="controls">
+        <button id="btnFirst">|&lt;</button>
+        <button id="btnPrev">&lt;</button>
+        <button id="btnNext">&gt;</button>
+        <button id="btnLast">&gt;|</button>
       </div>
+      <div class="controls">
+        <input id="slider" type="range" min="0" max="0" value="0" />
+        <span id="plyLabel" class="small">0手目</span>
+      </div>
+      <div class="small" id="moveLabel"></div>
+    </div>
 
+    <div class="panel movelist" id="movesPanel">
+      <div class="small" style="margin-bottom:6px">手順（タップで移動）</div>
+      <ol id="moves"></ol>
     </div>
   </div>
 
 <script>
 (() => {
+  // ---- embed detect
+  const isEmbedded = (window.self !== window.top);
+  if (isEmbedded) document.documentElement.classList.add("embedded");
+  document.getElementById("btnPop").href = location.href;
+
   // ---- Helpers: text decode (cp932/shift-jis)
   function decodeKif(buf) {
     const encs = ["shift-jis", "cp932", "utf-8"];
@@ -335,6 +289,7 @@
       try {
         const td = new TextDecoder(enc, { fatal: false });
         const txt = td.decode(buf);
+        if (txt && txt.includes("手数")) return txt;
         if (txt && txt.length > 20) return txt;
       } catch (_) {}
     }
@@ -346,8 +301,6 @@
     P:"歩", L:"香", N:"桂", S:"銀", G:"金", B:"角", R:"飛", K:"玉",
     pP:"と", pL:"杏", pN:"圭", pS:"全", pB:"馬", pR:"龍",
   };
-  const JP_NUM = "〇一二三四五六七八九十";
-
   function promote(kind){
     if (kind === "P") return "pP";
     if (kind === "L") return "pL";
@@ -419,7 +372,7 @@
     return { board:b2, hands:h2, stm:pos.stm, lastTo: pos.lastTo ? { ...pos.lastTo } : null };
   }
 
-  // ---- KIF parsing (main + variations)
+  // ---- KIF parsing
   const FW_DIGITS = "０１２３４５６７８９";
   const KAN_RANK = { "一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9 };
 
@@ -438,7 +391,6 @@
 
   function parsePieceAndFlags(rest) {
     rest = rest.replace(/\s+/g, "");
-    rest = rest.replace(/[▲▼☗☖]/g, ""); // 先後記号が混ざる棋譜用
     let isDrop = rest.includes("打");
     rest = rest.replace(/打/g, "");
     let forceNoProm = rest.includes("不成");
@@ -464,32 +416,33 @@
     return { kind, prom, isDrop };
   }
 
-  const move_pat1 = /^\s*(\d+)\s+(.+?)\((\d\d)\)\s*\(/;
-  const move_pat2 = /^\s*(\d+)\s+(.+?)\s*\(/;
-  const var_pat   = /^\s*変化：\s*(\d+)\s*手/;
+  function parseMoveLine(line) {
+    // with from: "... (27) ( 0:01/.."
+    const m1 = line.match(/^\s*(\d+)\s+(.+?)\((\d\d)\)\s*\(/);
+    if (m1) return { no:Number(m1[1]), mvStr:m1[2].trim(), from:m1[3], raw:line };
+    const m2 = line.match(/^\s*(\d+)\s+(.+?)\s*\(/);
+    if (m2) return { no:Number(m2[1]), mvStr:m2[2].trim(), from:null, raw:line };
+    return null;
+  }
 
-  function parseKifTree(kifText) {
+  function parseKifWithBranches(kifText) {
     const lines = kifText.split(/\r?\n/);
     const meta = {};
     let inMoves = false;
 
+    // main moves
     const main = [];
-    const varsByMoveNo = new Map(); // key: moveNo(int) => array of variation blocks
+    // variations: array of { atMove: number, moves: [] }
+    const vars = [];
 
-    let curVar = null; // { atMoveNo, moves:[] }
-    let mainEnded = false;
-
-    function pushVarBlock(v){
-      if (!v || !v.moves.length) return;
-      if (!varsByMoveNo.has(v.atMoveNo)) varsByMoveNo.set(v.atMoveNo, []);
-      varsByMoveNo.get(v.atMoveNo).push(v);
-    }
+    let curVar = null;
 
     for (const line0 of lines) {
       const line = line0.trimEnd();
       if (!line) continue;
 
       if (line.includes("手数----指手")) { inMoves = true; continue; }
+
       if (!inMoves) {
         const m = line.match(/^([^：]+)：(.*)$/);
         if (m) meta[m[1].trim()] = m[2].trim();
@@ -498,42 +451,25 @@
 
       if (line.startsWith("*")) continue;
 
-      const vm = line.match(var_pat);
+      // variation marker: "変化：34手"
+      const vm = line.match(/^変化：\s*(\d+)\s*手/);
       if (vm) {
-        // start new variation block
-        pushVarBlock(curVar);
-        curVar = { atMoveNo: Number(vm[1]), moves: [] };
-        mainEnded = true;
+        curVar = { atMove: Number(vm[1]), moves: [] };
+        vars.push(curVar);
         continue;
       }
 
-      // match move line
-      let m1 = line.match(move_pat1);
-      let m2 = line.match(move_pat2);
-      if (!m1 && !m2) continue;
+      const mv = parseMoveLine(line);
+      if (!mv) continue;
 
-      const no = Number((m1||m2)[1]);
-      const mvStr = (m1||m2)[2].trim();
-      const from = m1 ? m1[3] : null;
-      const obj = { no, mvStr, from, raw: line };
-
-      if (!mainEnded && !curVar) {
-        main.push(obj);
-      } else {
-        // in variation section
-        if (!curVar) {
-          // variation section without explicit header (rare). treat as var from this move
-          curVar = { atMoveNo: no, moves: [] };
-        }
-        curVar.moves.push(obj);
-      }
+      if (curVar) curVar.moves.push(mv);
+      else main.push(mv);
     }
-    pushVarBlock(curVar);
 
-    return { meta, main, varsByMoveNo };
+    return { meta, main, vars };
   }
 
-  // ---- Move application (same as before, but used lazily)
+  // ---- Move legality (simple) for fallback
   function dir(side){ return side === "b" ? -1 : 1; }
   function inside(f,r){ return f>=1 && f<=9 && r>=1 && r<=9; }
 
@@ -560,7 +496,6 @@
         (df===0 && dr===-d)
       );
     }
-
     if (kind === "G") {
       return (
         (df===0 && dr===d) ||
@@ -615,6 +550,7 @@
     if (!destParsed) return { next, ok:false };
 
     const { f:toF, r:toR, rest } = destParsed;
+
     const pf = parsePieceAndFlags(rest);
     if (!pf) return { next, ok:false };
 
@@ -665,15 +601,88 @@
     return { next, ok:true };
   }
 
+  // ---- Move tree (branch)
+  function makeNode(move=null, parent=null){
+    return { move, parent, children:[], pos:null, ply: parent ? parent.ply+1 : 0 };
+  }
+
+  function buildTree(parsed){
+    const root = makeNode(null, null);
+
+    // mainline
+    const mainNodes = [root]; // mainNodes[ply] = node
+    let cur = root;
+    for (const m of parsed.main){
+      const nd = makeNode(m, cur);
+      cur.children.push(nd);
+      cur = nd;
+      mainNodes[cur.ply] = cur;
+    }
+
+    // variations attach to mainline at (atMove-1) ply
+    for (const v of parsed.vars){
+      const anchorPly = Math.max(0, v.atMove - 1);
+      const anchor = mainNodes[anchorPly] || root;
+
+      let vcur = anchor;
+      for (const m of v.moves){
+        const nd = makeNode(m, vcur);
+        vcur.children.push(nd);
+        vcur = nd;
+      }
+    }
+
+    return { root };
+  }
+
+  function computePositions(root){
+    root.pos = initStartpos();
+    const stack = [root];
+    while (stack.length){
+      const node = stack.pop();
+      for (const ch of node.children){
+        const res = applyMove(node.pos, ch.move);
+        ch.pos = res.next; // tolerance: even if parse fails, next contains something
+        stack.push(ch);
+      }
+    }
+  }
+
+  function lineFrom(node){
+    // from node, follow first-child chain
+    const out = [];
+    let cur = node;
+    while (cur.children && cur.children.length){
+      cur = cur.children[0];
+      out.push(cur);
+    }
+    return out;
+  }
+
+  function pathTo(node){
+    const arr = [];
+    let cur = node;
+    while (cur && cur.parent){
+      arr.push(cur);
+      cur = cur.parent;
+    }
+    arr.reverse();
+    return arr;
+  }
+
+  function nodeAtPlyInCurrentLine(ply){
+    // currentLineNodes[ply] means after ply moves (ply0 is root)
+    return currentLineNodes[ply] || tree.root;
+  }
+
   // ---- UI state
-  let kif = null;           // parsed tree
-  let lineMoves = [];       // current line (main or selected variation line)
+  let tree = null;
+  let currentLineNodes = []; // index 0 is root, 1.. are nodes
   let curPly = 0;
-  let positions = [];       // lazy cache: positions[ply]
-  let currentVariation = null; // { atMoveNo, indexInGroup, moves[] } or null
 
   // elements
   const elBoard = document.getElementById("board");
+  const elHands = document.getElementById("hands");
   const elMoves = document.getElementById("moves");
   const elSlider = document.getElementById("slider");
   const elPlyLabel = document.getElementById("plyLabel");
@@ -681,97 +690,96 @@
   const elMeta = document.getElementById("meta");
   const elFile = document.getElementById("file");
   const elKifText = document.getElementById("kifText");
-  const elBranchUI = document.getElementById("branchUI");
-  const elBranchList = document.getElementById("branchList");
-  const elBranchHint = document.getElementById("branchHint");
-  const elBtnBackMain = document.getElementById("btnBackMain");
+  const elBranchbar = document.getElementById("branchbar");
+  const elBranchopts = document.getElementById("branchopts");
 
-  const elTurnMark = document.getElementById("turnMark");
-  const elTurnWho  = document.getElementById("turnWho");
-  const elTurnHold = document.getElementById("turnHold");
+  // coords
+  function renderCoords(){
+    const top = document.getElementById("coordTop");
+    const bottom = document.getElementById("coordBottom");
+    const left = document.getElementById("coordLeft");
+    const right = document.getElementById("coordRight");
 
-  const elTopFiles = document.getElementById("topFiles");
-  const elRightRanks = document.getElementById("rightRanks");
+    top.innerHTML = ""; bottom.innerHTML = "";
+    for (let f=9; f>=1; f--){
+      const d1 = document.createElement("div");
+      d1.textContent = String(f);
+      d1.style.textAlign = "center";
+      top.appendChild(d1);
 
-  function initCoords(){
-    elTopFiles.innerHTML = "";
-    for (const f of [9,8,7,6,5,4,3,2,1]){
-      const d = document.createElement("div");
-      d.textContent = String(f);
-      elTopFiles.appendChild(d);
+      const d2 = document.createElement("div");
+      d2.textContent = String(f);
+      d2.style.textAlign = "center";
+      bottom.appendChild(d2);
     }
-    elRightRanks.innerHTML = "";
-    const kan = ["一","二","三","四","五","六","七","八","九"];
-    for (const k of kan){
-      const d = document.createElement("div");
-      d.textContent = k;
-      elRightRanks.appendChild(d);
+
+    left.innerHTML = ""; right.innerHTML = "";
+    for (let r=1; r<=9; r++){
+      const d1 = document.createElement("div");
+      d1.textContent = String(r);
+      d1.style.display="flex"; d1.style.alignItems="center"; d1.style.justifyContent="center";
+      left.appendChild(d1);
+
+      const d2 = document.createElement("div");
+      d2.textContent = String(r);
+      d2.style.display="flex"; d2.style.alignItems="center"; d2.style.justifyContent="center";
+      right.appendChild(d2);
     }
   }
 
   function renderBoard(pos) {
     elBoard.innerHTML = "";
-    for (let r=1; r<=9; r++) {
-      const tr = document.createElement("tr");
-      for (let f=9; f>=1; f--) {
-        const td = document.createElement("td");
+    // ranks 1..9 top->bottom, files 9..1 left->right
+    for (let r=1; r<=9; r++){
+      for (let f=9; f>=1; f--){
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        if (f===1) cell.classList.add("edgeRight");
+        if (r===9) cell.classList.add("edgeBottom");
+
         const p = pos.board[r][f];
-        if (p) {
-          const span = document.createElement("span");
+        if (p){
+          const sp = document.createElement("span");
           const k = p.kind;
           const base = unpromote(k);
-          span.textContent = (isPromoted(k) ? PIECE[k] : PIECE[base]) || "?";
-          if (p.side === "w") span.className = "gote";
-          td.appendChild(span);
+          const label = (isPromoted(k) ? PIECE[k] : PIECE[base]) || "?";
+          sp.textContent = label;
+          sp.className = "piece" + (p.side==="w" ? " gote" : "");
+          cell.appendChild(sp);
         }
-        tr.appendChild(td);
+        elBoard.appendChild(cell);
       }
-      elBoard.appendChild(tr);
     }
   }
 
-  function fmtHoldLine(hand){
-    // 例: 角歩二（歩×2なら「歩二」）
-    const order = ["R","B","G","S","N","L","P"];
-    let out = "";
-    for (const k of order){
-      const n = hand[k] || 0;
-      if (!n) continue;
-      out += PIECE[k];
-      if (n >= 2) out += (n < JP_NUM.length ? JP_NUM[n] : String(n));
+  function renderHands(pos) {
+    function fmtHand(side){
+      const order = ["R","B","G","S","N","L","P"];
+      const parts = [];
+      for (const k of order) {
+        const n = pos.hands[side][k] || 0;
+        if (n>0) parts.push(`<span class="handpiece">${PIECE[k]}×${n}</span>`);
+      }
+      return parts.length ? parts.join(" ") : `<span class="small">なし</span>`;
     }
-    return out || "なし";
-  }
-
-  function updateTurnBadge(pos){
-    const stm = pos.stm; // side to move
-    elTurnMark.textContent = (stm === "b") ? "☗" : "☖";
-    elTurnWho.textContent  = (stm === "b") ? "先手番" : "後手番";
-    const bHold = fmtHoldLine(pos.hands.b);
-    const wHold = fmtHoldLine(pos.hands.w);
-    elTurnHold.textContent = `先手：${bHold} / 後手：${wHold}`;
-  }
-
-  function ensurePos(ply){
-    ply = Math.max(0, Math.min(ply, lineMoves.length));
-    while (positions.length <= ply){
-      const prev = positions[positions.length - 1];
-      const mv = lineMoves[positions.length - 1];
-      const res = applyMove(prev, mv);
-      positions.push(res.next);
-    }
-    return positions[ply];
+    elHands.innerHTML = `
+      <div class="handline"><span class="handtitle">後手</span> ${fmtHand("w")}</div>
+      <div class="handline"><span class="handtitle">先手</span> ${fmtHand("b")}</div>
+    `;
   }
 
   function renderMovelist() {
     elMoves.innerHTML = "";
-    lineMoves.forEach((m, idx) => {
+    // currentLineNodes[0] is root; show 1.. as moves
+    for (let i=1; i<currentLineNodes.length; i++){
+      const n = currentLineNodes[i];
       const li = document.createElement("li");
+      const m = n.move;
       li.textContent = `${m.no}. ${m.mvStr}${m.from ? " ("+m.from+")" : ""}`;
-      li.dataset.ply = String(idx+1);
-      li.addEventListener("click", () => setPly(idx+1));
+      li.dataset.ply = String(i);
+      li.addEventListener("click", () => setPly(i));
       elMoves.appendChild(li);
-    });
+    }
   }
 
   function highlightMovelist() {
@@ -779,82 +787,92 @@
     lis.forEach(li => li.classList.remove("active"));
     if (curPly >= 1) {
       const li = elMoves.querySelector(`li[data-ply="${curPly}"]`);
-      if (li) {
-        li.classList.add("active");
-        li.scrollIntoView({ block:"nearest" });
-      }
+      if (li) { li.classList.add("active"); li.scrollIntoView({ block:"nearest" }); }
     }
   }
 
-  function setBranchUI(){
-    // 変化：N手 は「N手目の手」なので、分岐が選べるのは (N-1)手目の局面
-    elBranchList.innerHTML = "";
-    elBranchUI.style.display = "none";
-    elBtnBackMain.style.display = currentVariation ? "inline-block" : "none";
+  function updateBranchUI() {
+    // show branch options at current ply node's children (excluding the one currently chosen)
+    const node = currentLineNodes[curPly] || tree.root;
+    if (!node || !node.children || node.children.length <= 1) {
+      elBranchbar.style.display = "none";
+      elBranchopts.innerHTML = "";
+      return;
+    }
 
-    if (!kif) return;
+    elBranchbar.style.display = "";
+    elBranchopts.innerHTML = "";
 
-    const nextMoveNo = curPly + 1; // これから指す手番号
-    const vars = kif.varsByMoveNo.get(nextMoveNo);
-    if (!vars || !vars.length) return;
+    // which child is selected for the next step in current line?
+    const selectedNext = currentLineNodes[curPly+1] || null;
 
-    elBranchUI.style.display = "block";
-    elBranchHint.textContent = `「変化：${nextMoveNo}手」からの候補が ${vars.length} 個あります。`;
-
-    vars.forEach((v, idx) => {
-      const first = v.moves[0];
-      const label = first ? `${first.no}. ${first.mvStr}${first.from ? " ("+first.from+")" : ""}` : `変化 ${idx+1}`;
-      const btn = document.createElement("button");
-      btn.className = "branchBtn" + (currentVariation && currentVariation.atMoveNo === v.atMoveNo && currentVariation.indexInGroup === idx ? " active" : "");
-      btn.textContent = label;
-      btn.addEventListener("click", () => {
-        selectVariation(nextMoveNo, idx, v);
-      });
-      elBranchList.appendChild(btn);
+    node.children.forEach((ch, idx) => {
+      const b = document.createElement("button");
+      b.className = "branchbtn";
+      const m = ch.move;
+      b.textContent = `候補${idx+1}: ${m.no}. ${m.mvStr}${m.from ? " ("+m.from+")" : ""}`;
+      if (selectedNext === ch) b.classList.add("active");
+      b.addEventListener("click", () => switchBranchAt(curPly, ch));
+      elBranchopts.appendChild(b);
     });
   }
 
-  function rebuildLine(){
-    // main only or main + selected variation
-    if (!kif){
-      lineMoves = [];
-      return;
+  function rebuildCurrentLineFrom(rootNode, chosenChildAtPly=null, ply=null){
+    // default mainline from root following first-child
+    // if chosenChildAtPly is set, use it at that node and then follow first-children
+    // Build nodes: [root, ...]
+    const nodes = [];
+    nodes.push(tree.root);
+
+    // walk from root, but if we have chosen override at ply, apply that
+    let cur = tree.root;
+    let i = 0;
+    while (cur.children && cur.children.length){
+      let next = cur.children[0];
+      if (chosenChildAtPly && ply !== null && i === ply) next = chosenChildAtPly;
+      nodes.push(next);
+      cur = next;
+      i++;
+      // safety cap
+      if (i > 6000) break;
+      // after override applied once, continue first-child down that branch
+      chosenChildAtPly = null;
     }
-    if (!currentVariation){
-      lineMoves = kif.main.slice();
-      return;
-    }
-    const atMoveNo = currentVariation.atMoveNo; // N
-    const prefix = kif.main.slice(0, atMoveNo - 1); // up to N-1 moves
-    lineMoves = prefix.concat(currentVariation.moves);
+    currentLineNodes = nodes;
   }
 
-  function resetPositions(){
-    positions = [initStartpos()];
-    curPly = 0;
-    elSlider.min = "0";
-    elSlider.max = String(lineMoves.length);
-    elSlider.value = "0";
+  function switchBranchAt(ply, chosenChild){
+    // Keep prefix up to ply, then use chosenChild, then follow first-child chain
+    const prefix = currentLineNodes.slice(0, ply+1); // includes node at ply
+    const tail = [chosenChild, ...lineFrom(chosenChild)];
+    currentLineNodes = [...prefix, ...tail];
+
+    renderMovelist();
+    elSlider.max = String(Math.max(0, currentLineNodes.length-1));
+    setPly(ply+1);
   }
 
   function setPly(ply) {
-    ply = Math.max(0, Math.min(ply, lineMoves.length));
+    ply = Math.max(0, Math.min(ply, currentLineNodes.length-1));
     curPly = ply;
 
     elSlider.value = String(ply);
     elPlyLabel.textContent = `${ply}手目`;
 
-    const pos = ensurePos(ply);
-    renderBoard(pos);
-    updateTurnBadge(pos);
-    highlightMovelist();
+    const node = currentLineNodes[ply] || tree.root;
+    const pos = node.pos || initStartpos();
 
-    if (ply === 0) elMoveLabel.textContent = "初期局面";
-    else {
-      const m = lineMoves[ply-1];
+    renderBoard(pos);
+    renderHands(pos);
+    highlightMovelist();
+    updateBranchUI();
+
+    if (ply === 0) {
+      elMoveLabel.textContent = "初期局面";
+    } else {
+      const m = node.move;
       elMoveLabel.textContent = `${m.no}. ${m.mvStr}${m.from ? " ("+m.from+")" : ""}`;
     }
-    setBranchUI();
   }
 
   function setMeta(meta) {
@@ -865,43 +883,34 @@
   }
 
   function loadKifText(text) {
-    kif = parseKifTree(text);
-    setMeta(kif.meta);
+    const parsed = parseKifWithBranches(text);
+    setMeta(parsed.meta);
 
-    currentVariation = null;
-    rebuildLine();
+    tree = buildTree(parsed);
+    computePositions(tree.root);
+
+    // default: mainline (always first-child chain)
+    rebuildCurrentLineFrom(tree.root);
+
     renderMovelist();
-    resetPositions();
+    elSlider.max = String(Math.max(0, currentLineNodes.length-1));
     setPly(0);
-  }
-
-  function selectVariation(atMoveNo, indexInGroup, varBlock){
-    currentVariation = { atMoveNo, indexInGroup, moves: varBlock.moves.slice() };
-    rebuildLine();
-    renderMovelist();
-    resetPositions();
-    // 分岐開始直前へ移動
-    setPly(atMoveNo - 1);
   }
 
   // buttons
   document.getElementById("btnFirst").addEventListener("click", () => setPly(0));
   document.getElementById("btnPrev").addEventListener("click", () => setPly(curPly-1));
   document.getElementById("btnNext").addEventListener("click", () => setPly(curPly+1));
-  document.getElementById("btnLast").addEventListener("click", () => setPly(lineMoves.length));
+  document.getElementById("btnLast").addEventListener("click", () => setPly(currentLineNodes.length-1));
 
   elSlider.addEventListener("input", (e) => setPly(Number(e.target.value)));
 
   document.getElementById("btnReset").addEventListener("click", () => {
-    if (!kif){
-      kif = { meta:{}, main:[], varsByMoveNo:new Map() };
-      lineMoves = [];
-      renderMovelist();
-    }
-    currentVariation = null;
-    rebuildLine();
+    // reset to startpos only
+    tree = { root: { pos:initStartpos(), children:[], ply:0 } };
+    currentLineNodes = [tree.root];
+    elSlider.max = "0";
     renderMovelist();
-    resetPositions();
     setPly(0);
   });
 
@@ -929,25 +938,16 @@
       elKifText.value = text;
       loadKifText(text);
     } catch (e) {
-      alert("サンプルが見つかりません。piyo_prev_game.kif を同じ場所に置いてください。");
+      alert("サンプルが見つからないわ。リポジトリ直下に piyo_prev_game.kif を置いてね。");
     }
   });
 
-  elBtnBackMain.addEventListener("click", () => {
-    currentVariation = null;
-    rebuildLine();
-    renderMovelist();
-    resetPositions();
-    setPly(0);
-  });
-
-  // initial
-  initCoords();
-  kif = null;
-  lineMoves = [];
-  positions = [initStartpos()];
-  renderBoard(positions[0]);
-  updateTurnBadge(positions[0]);
+  // initial empty render
+  renderCoords();
+  tree = { root: { pos:initStartpos(), children:[], ply:0 } };
+  currentLineNodes = [tree.root];
+  renderBoard(tree.root.pos);
+  renderHands(tree.root.pos);
 })();
 </script>
 </body>
