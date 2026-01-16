@@ -6,7 +6,7 @@ GitHub上のKIFファイルをURL指定で読み込み、
 
 ## 使い方
 
-1. `kif/` フォルダに `.kif` ファイルを保存  
+1. `kif/` フォルダに `任意のファイル名.kif` ファイルを保存  
 2. 以下の形式のURLをNotionに埋め込む：
 
 https://qupffer.github.io/Shogi_kifplayer/?kif=ファイル名.kif
