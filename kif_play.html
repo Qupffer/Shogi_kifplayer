@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KIF Viewer (origin-coord only)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; margin: 16px; }
+    .wrap { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
+    textarea { width: 100%; height: 240px; }
+    button { padding: 8px 12px; margin-right: 8px; }
+    .row { margin: 8px 0; }
+    .board { border-collapse: collapse; user-select: none; }
+    .board td {
+      width: 44px; height: 44px; text-align: center; vertical-align: middle;
+      border: 1px solid #999; font-size: 18px; line-height: 1;
+    }
+    .ranklabel, .filelabel { color: #666; font-size: 12px; }
+    .hands { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .handbox { border: 1px solid #ccc; padding: 8px; border-radius: 8px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .moves { max-height: 420px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+    .moveitem { padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+    .moveitem.active { background: #eef; }
+    .warn { color: #b00; }
+    .small { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>KIF簡易再生（元座標付き専用）</h2>
+
+  <div class="wrap">
+    <div>
+      <div class="row">
+        <div class="small">KIFを貼って「読み込み」。※元座標 (77) 形式が必須。打ちは (00)。</div>
+        <textarea id="kifInput" placeholder="ここにKIFを貼る"></textarea>
+      </div>
+      <div class="row">
+        <button id="loadBtn">読み込み</button>
+        <button id="resetBtn">リセット</button>
+      </div>
+
+      <div class="row">
+        <button id="firstBtn">|&lt;</button>
+        <button id="prevBtn">&lt;</button>
+        <button id="playBtn">▶</button>
+        <button id="nextBtn">&gt;</button>
+        <button id="lastBtn">&gt;|</button>
+        <span class="mono" id="plyInfo"></span>
+      </div>
+
+      <div class="row">
+        <div class="warn" id="warn"></div>
+      </div>
+
+      <div class="row">
+        <div class="moves" id="movesList"></div>
+      </div>
+    </div>
+
+    <div>
+      <table class="board" id="board"></table>
+
+      <div class="hands">
+        <div class="handbox">
+          <div><b>☗ 先手の持ち駒</b></div>
+          <div class="mono" id="handB"></div>
+        </div>
+        <div class="handbox">
+          <div><b>☖ 後手の持ち駒</b></div>
+          <div class="mono" id="handW"></div>
+        </div>
+      </div>
+
+      <div class="row small">
+        仕様：平手 startpos 前提。合法手判定は最低限（表示・再生重視）。
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Utils ----------
+  const warnEl = document.getElementById('warn');
+  const plyInfoEl = document.getElementById('plyInfo');
+  const movesListEl = document.getElementById('movesList');
+
+  function setWarn(msg) { warnEl.textContent = msg || ""; }
+  function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+
+  // KIF 数字（全角/半角） -> 1..9
+  function normDigit(ch){
+    const fw = "０１２３４５６７８９";
+    const idx = fw.indexOf(ch);
+    if (idx >= 0) return idx;
+    const n = parseInt(ch, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // USI rank letter: 1..9 => a..i
+  function rankToLetter(r){ return String.fromCharCode("a".charCodeAt(0) + (r - 1)); }
+  function sqNumToUsi(file, rank){ return `${file}${rankToLetter(rank)}`; }
+
+  // ---------- Pieces ----------
+  // board uses SFEN-like tokens with side by case:
+  // P,L,N,S,G,B,R,K and +P etc. Lowercase is white.
+  const JP = {
+    "P":"歩","L":"香","N":"桂","S":"銀","G":"金","B":"角","R":"飛","K":"玉",
+    "+P":"と","+L":"杏","+N":"圭","+S":"全","+B":"馬","+R":"龍",
+  };
+  function isPromoted(p){ return p.startsWith("+"); }
+  function unpromote(p){ return isPromoted(p) ? p.slice(1) : p; }
+  function promote(p){
+    if (isPromoted(p)) return p;
+    const u = unpromote(p);
+    if (["P","L","N","S","B","R"].includes(u)) return "+"+u;
+    return p; // G,K no promote
+  }
+
+  function pieceToJP(tok){
+    if (!tok) return "";
+    const isWhite = (tok === tok.toLowerCase());
+    const core = tok.toUpperCase(); // keeps leading + as +
+    const jp = JP[core] || core;
+    // show upside-down-ish for white by prefix marker (simple)
+    return isWhite ? "▽"+jp : "▲"+jp;
+  }
+
+  // For drops from KIF piece name:
+  const KIF_PIECE_TO_USI = new Map([
+    ["歩","P"],["香","L"],["桂","N"],["銀","S"],["金","G"],["角","B"],["飛","R"],["玉","K"],["王","K"],
+    ["と","P"],["成香","L"],["成桂","N"],["成銀","S"],["馬","B"],["龍","R"],["竜","R"]
+  ]);
+  function kifPieceToDropCode(s){
+    // remove suffixes like "打","成","不成","右","左","直","上","引","寄"
+    let t = s;
+    t = t.replace(/[打成不成右左直上引寄]/g, "");
+    // handle long names first
+    if (t.includes("成香")) return "L";
+    if (t.includes("成桂")) return "N";
+    if (t.includes("成銀")) return "S";
+    if (t.includes("龍") || t.includes("竜")) return "R";
+    if (t.includes("馬")) return "B";
+    if (t.includes("と")) return "P";
+    for (const [k,v] of KIF_PIECE_TO_USI.entries()){
+      if (t.includes(k)) return v;
+    }
+    return null;
+  }
+
+  // ---------- Board / Hands ----------
+  // Board coordinates:
+  // KIF: file 9..1 left->right from black view; rank 1..9 top->bottom
+  // We'll store board[rank][file] with rank 1..9, file 1..9 (same numeric).
+  function startBoard(){
+    // SFEN startpos: lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1
+    const sfen = [
+      "lnsgkgsnl",
+      "1r5b1",
+      "ppppppppp",
+      "9",
+      "9",
+      "9",
+      "PPPPPPPPP",
+      "1B5R1",
+      "LNSGKGSNL"
+    ];
+    const bd = Array.from({length: 10}, () => Array(10).fill(null));
+    for (let r=1; r<=9; r++){
+      const row = sfen[r-1];
+      let f = 9;
+      for (let i=0; i<row.length; i++){
+        const ch = row[i];
+        if (ch >= "1" && ch <= "9"){
+          f -= parseInt(ch,10);
+          continue;
+        }
+        let promo = false;
+        let pc = ch;
+        if (ch === "+"){
+          promo = true;
+          i++;
+          pc = row[i];
+        }
+        const tok = promo ? ("+" + pc) : pc;
+        bd[r][f] = tok;
+        f--;
+      }
+    }
+    return bd;
+  }
+
+  function emptyHands(){
+    // counts for each side: P,L,N,S,G,B,R
+    const init = () => ({P:0,L:0,N:0,S:0,G:0,B:0,R:0});
+    return { b: init(), w: init() };
+  }
+
+  function addHand(hands, side, capturedTok){
+    // capturedTok is board token, e.g. "p" or "+r"
+    const u = unpromote(capturedTok.toUpperCase()); // P,L...
+    if (!hands[side][u] && hands[side][u] !== 0) return;
+    hands[side][u] += 1;
+  }
+  function useHand(hands, side, piece){
+    if (hands[side][piece] <= 0) return false;
+    hands[side][piece] -= 1;
+    return true;
+  }
+
+  function applyUsiMove(state, usi){
+    // state: {board, hands, sideToMove} sideToMove "b"|"w"
+    const bd = state.board;
+    const hands = state.hands;
+    const stm = state.sideToMove;
+    const other = (stm === "b") ? "w" : "b";
+
+    const placeToken = (pieceCore) => (stm === "b" ? pieceCore : pieceCore.toLowerCase());
+
+    if (usi.includes("*")){
+      const [pc, dst] = usi.split("*");
+      // consume hand
+      if (!useHand(hands, stm, pc)) return {ok:false, err:`持ち駒が無い: ${pc}`};
+      const f = parseInt(dst[0],10);
+      const r = (dst.charCodeAt(1) - "a".charCodeAt(0)) + 1;
+      bd[r][f] = placeToken(pc);
+      state.sideToMove = other;
+      return {ok:true};
+    }
+
+    const prom = usi.endsWith("+");
+    const core = prom ? usi.slice(0,-1) : usi;
+    const src = core.slice(0,2);
+    const dst = core.slice(2,4);
+    const sf = parseInt(src[0],10);
+    const sr = (src.charCodeAt(1) - "a".charCodeAt(0)) + 1;
+    const df = parseInt(dst[0],10);
+    const dr = (dst.charCodeAt(1) - "a".charCodeAt(0)) + 1;
+
+    const piece = bd[sr][sf];
+    if (!piece) return {ok:false, err:`元マスに駒がない: ${usi}`};
+
+    // capture
+    const target = bd[dr][df];
+    if (target){
+      // add captured to stm hands
+      addHand(hands, stm, target);
+    }
+
+    bd[sr][sf] = null;
+    let moved = piece;
+    // normalize to stm side case (just in case)
+    moved = (stm === "b") ? moved.toUpperCase() : moved.toLowerCase();
+
+    if (prom){
+      const up = promote(moved.toUpperCase());
+      moved = (stm === "b") ? up : up.toLowerCase();
+    }
+
+    bd[dr][df] = moved;
+    state.sideToMove = other;
+    return {ok:true};
+  }
+
+  // ---------- KIF parsing (origin required) ----------
+  // Accept lines like:
+  // 1 ７六歩(77)
+  // 2 ３四歩(33)
+  // 3 同　歩(??) etc
+  //
+  // We'll ignore time like (0:00/0:00) after.
+  const MOVE_RE = /^\s*([0-9０-９]+)\s+(.+?)\s*$/;
+  const ORIGIN_RE = /\(([0-9０-９]{2})\)\s*$/; // (77) or (00) at end
+  const DEST_RE = /^([0-9０-９])([一二三四五六七八九]|[1-9])|^(同)/;
+
+  const KANJI_RANK = new Map([
+    ["一",1],["二",2],["三",3],["四",4],["五",5],["六",6],["七",7],["八",8],["九",9],
+  ]);
+
+  function parseMoveLine(line){
+    const m = line.match(MOVE_RE);
+    if (!m) return null;
+
+    const numStr = m[1];
+    const moveStr = m[2].trim();
+
+    // Skip non-move meta like "まで" "変化"
+    if (moveStr.startsWith("*") || moveStr.includes("変化") || moveStr.includes("まで")) return null;
+
+    const om = moveStr.match(ORIGIN_RE);
+    if (!om) return {kind:"err", err:`元座標(77)が無い手: ${moveStr}`};
+
+    const org2 = om[1];
+    const orgF = normDigit(org2[0]);
+    const orgR = normDigit(org2[1]);
+    if (orgF == null || orgR == null) return {kind:"err", err:`元座標が読めない: ${moveStr}`};
+
+    // strip origin
+    const core = moveStr.replace(ORIGIN_RE, "").trim();
+
+    return {
+      kind:"mv",
+      num: parseInt(numStr.replace(/[０-９]/g, c => "0123456789"["０１２３４５６７８９".indexOf(c)]), 10),
+      raw: moveStr,
+      core,
+      orgF, orgR
+    };
+  }
+
+  function parseDest(core, prevDest){
+    // core begins like "７六歩" or "同　銀" etc.
+    const t = core.replace(/\s+/g, ""); // remove spaces
+    if (t.startsWith("同")){
+      if (!prevDest) return {ok:false, err:`「同」なのに直前の移動先が無い: ${core}`};
+      return {ok:true, dst: prevDest};
+    }
+    // first char digit(full/half) = file
+    const f = normDigit(t[0]);
+    if (!f) return {ok:false, err:`移動先の筋が読めない: ${core}`};
+    // second char rank kanji or digit
+    const rch = t[1];
+    let r = null;
+    if (KANJI_RANK.has(rch)) r = KANJI_RANK.get(rch);
+    else r = normDigit(rch);
+    if (!r) return {ok:false, err:`移動先の段が読めない: ${core}`};
+    return {ok:true, dst: sqNumToUsi(f, r)};
+  }
+
+  function kifToUsiMoves(lines){
+    const moves = [];
+    let prevDst = null;
+    for (const line of lines){
+      const p = parseMoveLine(line);
+      if (!p) continue;
+      if (p.kind === "err") return {ok:false, err:p.err};
+
+      // dest
+      const d = parseDest(p.core, prevDst);
+      if (!d.ok) return {ok:false, err:d.err};
+      const dst = d.dst;
+
+      // origin
+      const org = (p.orgF === 0 && p.orgR === 0) ? "00" : sqNumToUsi(p.orgF, p.orgR);
+
+      // promotion mark
+      const hasPromote = p.core.includes("成") && !p.core.includes("不成");
+      const isDrop = (org === "00") || p.core.includes("打");
+
+      let usi = null;
+      if (isDrop){
+        const pc = kifPieceToDropCode(p.core);
+        if (!pc) return {ok:false, err:`打ち駒の種類が分からない: ${p.raw}`};
+        usi = `${pc}*${dst}`;
+      } else {
+        usi = `${org}${dst}${hasPromote ? "+" : ""}`;
+      }
+
+      moves.push({num:p.num, kif:p.raw, usi});
+      prevDst = dst;
+    }
+    return {ok:true, moves};
+  }
+
+  // ---------- Render ----------
+  const boardEl = document.getElementById('board');
+  function buildBoardTable(){
+    // We'll add a top row of file labels 9..1, and left col of rank labels 1..9.
+    boardEl.innerHTML = "";
+    const header = document.createElement("tr");
+    header.appendChild(document.createElement("td")); // corner
+    for (let f=9; f>=1; f--){
+      const td = document.createElement("td");
+      td.className = "filelabel";
+      td.textContent = String(f);
+      header.appendChild(td);
+    }
+    boardEl.appendChild(header);
+
+    for (let r=1; r<=9; r++){
+      const tr = document.createElement("tr");
+      const rl = document.createElement("td");
+      rl.className = "ranklabel";
+      rl.textContent = String(r);
+      tr.appendChild(rl);
+
+      for (let f=9; f>=1; f--){
+        const td = document.createElement("td");
+        td.dataset.r = String(r);
+        td.dataset.f = String(f);
+        tr.appendChild(td);
+      }
+      boardEl.appendChild(tr);
+    }
+  }
+
+  function renderState(state){
+    // update cells
+    for (let r=1; r<=9; r++){
+      for (let f=1; f<=9; f++){
+        const sel = `td[data-r="${r}"][data-f="${f}"]`;
+        const td = boardEl.querySelector(sel);
+        const tok = state.board[r][f];
+        td.textContent = pieceToJP(tok);
+      }
+    }
+    // hands
+    const hb = document.getElementById('handB');
+    const hw = document.getElementById('handW');
+    hb.textContent = handText(state.hands.b);
+    hw.textContent = handText(state.hands.w);
+
+    plyInfoEl.textContent = `手番: ${state.sideToMove === "b" ? "☗先手" : "☖後手"} / 手数: ${state.ply}`;
+  }
+
+  function handText(h){
+    const order = ["R","B","G","S","N","L","P"];
+    const parts = [];
+    for (const k of order){
+      if (h[k] > 0) parts.push(`${k}x${h[k]}`);
+    }
+    return parts.length ? parts.join("  ") : "(なし)";
+  }
+
+  // ---------- Playback ----------
+  let baseState = null;    // startpos state
+  let curState = null;     // current state
+  let moveList = [];       // parsed moves {num,kif,usi}
+  let ply = 0;
+  let timer = null;
+
+  function makeStartState(){
+    return {
+      board: startBoard(),
+      hands: emptyHands(),
+      sideToMove: "b",
+      ply: 0
+    };
+  }
+
+  function resetAll(){
+    if (timer) { clearInterval(timer); timer = null; }
+    ply = 0;
+    moveList = [];
+    movesListEl.innerHTML = "";
+    baseState = makeStartState();
+    curState = cloneState(baseState);
+    renderState(curState);
+    setWarn("");
+  }
+
+  function cloneState(s){
+    const bd = Array.from({length:10}, (_,r) => s.board[r] ? s.board[r].slice() : null);
+    const hands = {
+      b: {...s.hands.b},
+      w: {...s.hands.w},
+    };
+    return { board: bd, hands, sideToMove: s.sideToMove, ply: s.ply };
+  }
+
+  function rebuildTo(targetPly){
+    curState = cloneState(baseState);
+    for (let i=0; i<targetPly; i++){
+      const m = moveList[i];
+      const res = applyUsiMove(curState, m.usi);
+      if (!res.ok){
+        setWarn(`再生中に失敗: ${res.err} / 手: ${m.kif}`);
+        break;
+      }
+      curState.ply = i+1;
+    }
+    ply = clamp(targetPly, 0, moveList.length);
+    curState.ply = ply;
+    renderState(curState);
+    highlightMove(ply);
+  }
+
+  function highlightMove(p){
+    const items = movesListEl.querySelectorAll(".moveitem");
+    items.forEach(el => el.classList.remove("active"));
+    if (p >= 1){
+      const el = movesListEl.querySelector(`.moveitem[data-idx="${p-1}"]`);
+      if (el) el.classList.add("active");
+    }
+  }
+
+  function next(){ if (ply < moveList.length) rebuildTo(ply+1); }
+  function prev(){ if (ply > 0) rebuildTo(ply-1); }
+  function first(){ rebuildTo(0); }
+  function last(){ rebuildTo(moveList.length); }
+
+  function togglePlay(){
+    const btn = document.getElementById('playBtn');
+    if (timer){
+      clearInterval(timer);
+      timer = null;
+      btn.textContent = "▶";
+      return;
+    }
+    btn.textContent = "⏸";
+    timer = setInterval(() => {
+      if (ply >= moveList.length){
+        clearInterval(timer);
+        timer = null;
+        btn.textContent = "▶";
+        return;
+      }
+      next();
+    }, 600);
+  }
+
+  function renderMovesList(){
+    movesListEl.innerHTML = "";
+    moveList.forEach((m, idx) => {
+      const div = document.createElement("div");
+      div.className = "moveitem";
+      div.dataset.idx = String(idx);
+      div.innerHTML = `<span class="mono">${String(idx+1).padStart(3," ")}</span> ${escapeHtml(m.kif)} <span class="small mono">(${m.usi})</span>`;
+      div.addEventListener("click", () => rebuildTo(idx+1));
+      movesListEl.appendChild(div);
+    });
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- Wire UI ----------
+  document.getElementById('loadBtn').addEventListener('click', () => {
+    if (timer) { clearInterval(timer); timer = null; document.getElementById('playBtn').textContent="▶"; }
+
+    const txt = document.getElementById('kifInput').value || "";
+    const lines = txt.split(/\r?\n/);
+
+    const r = kifToUsiMoves(lines);
+    if (!r.ok){
+      setWarn(r.err);
+      return;
+    }
+
+    moveList = r.moves;
+    setWarn("");
+    renderMovesList();
+    baseState = makeStartState();
+    rebuildTo(0);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+  document.getElementById('nextBtn').addEventListener('click', next);
+  document.getElementById('prevBtn').addEventListener('click', prev);
+  document.getElementById('firstBtn').addEventListener('click', first);
+  document.getElementById('lastBtn').addEventListener('click', last);
+  document.getElementById('playBtn').addEventListener('click', togglePlay);
+
+  // init
+  buildBoardTable();
+  resetAll();
+
+  // optional sample
+  document.getElementById('kifInput').value =
+`手合割：平手
+先手：先手
+後手：後手
+手数----指手---------消費時間--
+1 ７六歩(77)
+2 ３四歩(33)
+3 ２六歩(27)
+4 ８四歩(83)
+5 ２五歩(26)
+6 ８五歩(84)`;
+})();
+</script>
+</body>
+</html>
