@@ -872,15 +872,13 @@
   async function autoLoadKifFromUrl() {
   const params = new URLSearchParams(location.search);
   const kifName = params.get("kif");
-  if (!kifName) return; // URL指定なしなら何もしない
+  if (!kifName) return;
 
-  // セキュリティ＆事故防止（フォルダ外参照を防ぐ）
   if (kifName.includes("..") || kifName.includes("/") || kifName.includes("\\")) {
     alert("kifパラメータが不正です");
     return;
   }
 
-  // 例: kif/gotekakugawari.kif を取りに行く
   const url = `kif/${encodeURIComponent(kifName)}`;
 
   try {
@@ -888,17 +886,17 @@
     if (!res.ok) throw new Error(`KIF取得失敗: ${res.status}`);
     const kifText = await res.text();
 
-    // ここが“友達UI”に合わせる部分：
-    // 1) 既存の棋譜入力欄(textarea)に入れる
-    // 2) 既存の「読み込み」ボタン処理を呼ぶ
+    // あなたのUIに合わせたID
+    const ta = document.getElementById("kifText");
+    const loadBtn = document.getElementById("btnLoadText");
 
-    // ▼あなたのページ内の textarea をこれに合わせて修正（後述）
-    const ta = document.getElementById("kifuInput");
-    if (ta) ta.value = kifText;
+    if (!ta || !loadBtn) {
+      alert("UI要素が見つかりません（ID確認）");
+      return;
+    }
 
-    // ▼あなたの「読み込み」ボタンをクリック（既存処理を流用）
-    const loadBtn = document.getElementById("loadBtn");
-    if (loadBtn) loadBtn.click();
+    ta.value = kifText;
+    loadBtn.click(); // 既存の読み込み処理をそのまま使う
 
   } catch (e) {
     console.error(e);
@@ -906,7 +904,6 @@
   }
 }
 
-// ページ表示が終わったら自動読み込み
 window.addEventListener("DOMContentLoaded", autoLoadKifFromUrl);
 
 </script>
